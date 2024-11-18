@@ -31,6 +31,19 @@ class NaiveBayes:
         exponent = np.exp(-1/2*((feature - mean)/std)**2)
         function = 1/(std*np.sqrt(2*np.pi))*exponent
         return function
+    
+    def _discret_likelihood(self, feature: pd.Series) -> pd.Series:
+        """Calculates the likelihood of each value in the feature.
+
+        Args:
+            feature (pd.Series): Feature to calculate the likelihood.
+
+        Returns:
+            pd.Series: Likelihood of each value in the feature.
+        """
+        value_counts = feature.value_counts()
+        likelihood = feature.map(value_counts / len(feature))
+        return likelihood
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series):
         """Calculates the mean and the standard deviation of the features per class.
@@ -44,11 +57,15 @@ class NaiveBayes:
             parameters[class_] = {
                 'apriori': len(y_train[y_train == class_])/len(y_train)
             }
-
-            for feature in X_train.columns:
+            for feature in X_train.select_dtypes(include='number').columns:
                 parameters[class_][feature] = {}
                 parameters[class_][feature]['mean'] = X_train[y_train == class_][feature].mean()
                 parameters[class_][feature]['std'] = X_train[y_train == class_][feature].std()
+
+            for feature in X_train.select_dtypes(include='object').columns:
+                parameters[class_][feature] = {}
+                subset = X_train[y_train == class_][feature]
+                parameters[class_][feature]['likelihood'] = subset.value_counts()/len(subset)
             
         self.parameters = parameters
     
@@ -62,21 +79,47 @@ class NaiveBayes:
         for class_ in self.classes:
             likelihood = 1
             for feat in X_test.columns:
-                likelihood*=self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std'])
+                if X_test[feat].dtype == 'object':
+                    likelihood*=self._discret_likelihood(X_test[feat])
+                else:
+                    likelihood*=self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std'])
             probabilities[class_] = likelihood*self.parameters[class_]['apriori']
 
         return probabilities
 
-    def predict(self, X_test: pd.DataFrame) -> pd.Series:
+    def predict_log_prob(self, X_test: pd.DataFrame) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """Predicts the log probability of each class given the features.
+
+        Returns:
+            Dict[str, Dict[str, Dict[str, float]]]: Mean and standard deviation of the features per class.
+        """
+        log_probabilities = {}
+        for class_ in self.classes:
+            likelihood = 0
+            for feat in X_test.columns:
+                if X_test[feat].dtype == 'object':
+                    likelihood+=np.log(self._discret_likelihood(X_test[feat]))
+                else:
+                    likelihood+=np.log(self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std']))
+            log_probabilities[class_] = likelihood+np.log(self.parameters[class_]['apriori'])
+        return log_probabilities
+
+    def predict(self, X_test: pd.DataFrame, method: None | str  = None) -> pd.Series:
         """Predicts the class of the features.
 
         Args:
-            X_test (pd.DataFrame): Features.
+            X_test (pd.DataFrame): Features to predict.
+            method (None | str, optional): Method to predict the class. This can be None or 'log'. 
+            Defaults to None.
 
         Returns:
             pd.Series: Predicted class.
         """
-        probabilities = pd.DataFrame(self.predict_prob(X_test))
+        if method == 'log':
+            probabilities = pd.DataFrame(self.predict_log_prob(X_test))
+        else:
+            probabilities = pd.DataFrame(self.predict_prob(X_test))
+
         return probabilities.idxmax(axis="columns")
     
     def _cross_validation_split(self, k: int, data: pd.DataFrame) -> List[Dict[str, pd.DataFrame]]:
@@ -111,13 +154,15 @@ class NaiveBayes:
         """
         return (y_true == y_pred).sum()/len(y_true)
         
-    def cross_validation_evaluate(self, k: int, data: pd.DataFrame) -> List[float]:
+    def cross_validation_evaluate(self, k: int, data: pd.DataFrame, method: None | str  = None) -> List[float]:
         """Evaluates the model using cross-validation.
 
         Args:
             k (int): Number of folds.
             X (pd.DataFrame): Features.
             y (pd.Series): Target.
+            method (None | str, optional): Method to predict the class. This can be None or 'log'. 
+            Defaults to None.
 
         Returns:
             List[float]: List of accuracies.
@@ -131,7 +176,7 @@ class NaiveBayes:
             y_test = fold['test']['class']
 
             self.fit(X_train=X_train, y_train=y_train)
-            y_pred = self.predict(X_test=X_test)
+            y_pred = self.predict(X_test=X_test, method=method)
             
             accuracy = self.accuracy_metric(y_true=y_test, y_pred=y_pred)
             accuracies.append(accuracy)
@@ -139,13 +184,33 @@ class NaiveBayes:
         return accuracies, mean_accuracy
 
 if __name__ == '__main__':
+    print("Loading data...")
     from ucimlrepo import fetch_ucirepo
     iris_dataset = fetch_ucirepo(id=53)
     X_iris = iris_dataset.data.features
     y_iris = iris_dataset.data.targets['class']
     iris_df = pd.concat([X_iris, y_iris], axis=1)
 
-    # Cross-validation evaluation
+    test_df = pd.DataFrame(
+        {
+            'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul'], 
+            'Tamaño': ['Grande', 'Pequeño', 'Pequeño', 'Grande'],
+            'Length': [5, 10, 15, 20],    
+            'class': ['A', 'B', 'A', 'B']
+        }
+    )
+
+    print("Fitting the models...")
     nb = NaiveBayes()
-    cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
-    print(cv_ev)
+    nb.fit(X_train=test_df.iloc[:, :-1], y_train=test_df['class'])
+
+    print(nb.predict_prob(test_df.iloc[:, :-1]))
+    print(nb.predict_log_prob(test_df.iloc[:, :-1]))
+    # print("Evaluating the model with no log-probabilities...")
+    # cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
+
+    # print("Evaluating the model with log-probabilities...")
+    # cv_ev_log = nb.cross_validation_evaluate(k=5, data=iris_df, method='log')
+    
+    # print(cv_ev)
+    # print(cv_ev_log)
