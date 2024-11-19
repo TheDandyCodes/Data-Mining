@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional
 from tqdm import tqdm
 
 class NaiveBayes:
@@ -135,7 +135,7 @@ class NaiveBayes:
             log_probabilities[class_] = likelihood+np.log(self.parameters[class_]['apriori'])
         return log_probabilities
 
-    def predict(self, X_test: pd.DataFrame, method: None | str  = None) -> pd.Series:
+    def predict(self, X_test: pd.DataFrame, method: Optional[str] = None) -> pd.Series:
         """Predicts the class of the features.
 
         Parameters
@@ -200,7 +200,7 @@ class NaiveBayes:
         """
         return (y_true == y_pred).sum()/len(y_true)
         
-    def cross_validation_evaluate(self, k: int, data: pd.DataFrame, method: None | str  = None) -> tuple[List[float], float]:
+    def cross_validation_evaluate(self, k: int, data: pd.DataFrame, method: Optional[str] = None) -> tuple[List[float], float]:
         """Evaluates the model using cross-validation.
 
         Parameters
