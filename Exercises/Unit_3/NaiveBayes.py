@@ -12,34 +12,46 @@ class NaiveBayes:
     def _set_classes(self, y: pd.Series):
         """Sets the classes of the model.
 
-        Args:
-            y (pd.Series): Target variable.
+        Parameters
+        ----------
+        y : pd.Series
+            Target variable.
         """
         self.classes = np.unique(y)
     
     def _gauss_likelihood(self, feature: pd.Series, mean: float, std: float) -> pd.Series:
         """Calculates the likelihood of a feature given a mean and a standard deviation.
 
-        Args:
-            feature (pd.Series): Feature to calculate the likelihood.
-            mean (float): Mean of the values of the feature per class.
-            std (float): Standard deviation of the values of the feature per class.
+        Parameters
+        ----------
+        feature : pd.Series
+            Feature to calculate the likelihood.
+        mean : float
+            Mean of the values of the feature per class.
+        std : float
+            Standard deviation of the values of the feature per class.
 
-        Returns:
-            pd.Series: Likelihood of the feature given the mean and the standard deviation.
+        Returns
+        -------
+        pd.Series
+            Likelihood of the feature given the mean and the standard deviation.
         """
         exponent = np.exp(-1/2*((feature - mean)/std)**2)
         function = 1/(std*np.sqrt(2*np.pi))*exponent
         return function
     
     def _discret_likelihood(self, feature: pd.Series) -> pd.Series:
-        """Calculates the likelihood of each value in the feature.
+        """Calculates the likelihood of each value for discret features.
 
-        Args:
-            feature (pd.Series): Feature to calculate the likelihood.
+        Parameters
+        ----------
+        feature : pd.Series
+            Feature to calculate the likelihood.
 
-        Returns:
-            pd.Series: Likelihood of each value in the feature.
+        Returns
+        -------
+        pd.Series
+            Likelihood of each value in the feature.
         """
         value_counts = feature.value_counts()
         likelihood = feature.map(value_counts / len(feature))
@@ -47,9 +59,14 @@ class NaiveBayes:
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series):
         """Calculates the mean and the standard deviation of the features per class.
+        As well as the discrete likelihood of the cathegories that belong to discreat features.
 
-        Returns:
-            Dict[str, Dict[str, Dict[str, float]]]: Mean and standard deviation of the features per class.
+        Parameters
+        ----------
+        X_train : pd.DataFrame
+            Training data.
+        y_train : pd.Series
+            Target of training data.
         """
         self._set_classes(y_train)
         parameters = {}
@@ -69,11 +86,18 @@ class NaiveBayes:
             
         self.parameters = parameters
     
-    def predict_prob(self, X_test: pd.DataFrame) -> Dict[str, Dict[str, Dict[str, float]]]:
+    def predict_prob(self, X_test: pd.DataFrame) -> Dict[str, pd.Series]:
         """Predicts the probability of each class given the features.
 
-        Returns:
-            Dict[str, Dict[str, Dict[str, float]]]: Mean and standard deviation of the features per class.
+        Parameters
+        ----------
+        X_test : pd.DataFrame
+            Test data.
+
+        Returns
+        -------
+        Dict[str, pd.Series]
+            Probabilities per class.
         """
         probabilities = {}
         for class_ in self.classes:
@@ -87,11 +111,18 @@ class NaiveBayes:
 
         return probabilities
 
-    def predict_log_prob(self, X_test: pd.DataFrame) -> Dict[str, Dict[str, Dict[str, float]]]:
+    def predict_log_prob(self, X_test: pd.DataFrame) -> Dict[str, pd.Series]:
         """Predicts the log probability of each class given the features.
 
-        Returns:
-            Dict[str, Dict[str, Dict[str, float]]]: Mean and standard deviation of the features per class.
+        Parameters
+        ----------
+        X_test : pd.DataFrame
+            Test data.
+
+        Returns
+        -------
+        Dict[str, pd.Series]
+            Log-probabilities per class.
         """
         log_probabilities = {}
         for class_ in self.classes:
@@ -107,16 +138,22 @@ class NaiveBayes:
     def predict(self, X_test: pd.DataFrame, method: None | str  = None) -> pd.Series:
         """Predicts the class of the features.
 
-        Args:
-            X_test (pd.DataFrame): Features to predict.
-            method (None | str, optional): Method to predict the class. This can be None or 'log'. 
+        Parameters
+        ----------
+        X_test : pd.DataFrame
+            Test data.
+        method : None | str, optional
+            Method to predict the class. This can be None or 'log'. 
             Defaults to None.
 
-        Returns:
-            pd.Series: Predicted class.
+        Returns
+        -------
+        pd.Series
+            Predicted class.
         """
         if method == 'log':
-            probabilities = pd.DataFrame(self.predict_log_prob(X_test))
+            # Multiply by minus one to convert to positive the negative values of log-probabilities
+            probabilities = pd.DataFrame(self.predict_log_prob(X_test))*(-1)
         else:
             probabilities = pd.DataFrame(self.predict_prob(X_test))
 
@@ -125,13 +162,17 @@ class NaiveBayes:
     def _cross_validation_split(self, k: int, data: pd.DataFrame) -> List[Dict[str, pd.DataFrame]]:
         """Splits the dataset into k folds.
 
-        Args:
-            k (int): Number of folds.
-            X (pd.DataFrame): Features.
-            y (pd.Series): Target.
+        Parameters
+        ----------
+        k : int
+            Number of folds.
+        data : pd.DataFrame
+            Dataset.
 
-        Returns:
-            List[Dict[str, pd.DataFrame]]: List of dictionaries with the train and test sets.
+        Returns
+        -------
+        List[Dict[str, pd.DataFrame]]
+            List of dictionaries with the train and test sets.
         """
         data = data.sample(frac=1).reset_index(drop=True)
         data['fold'] = data.index % k
@@ -145,27 +186,37 @@ class NaiveBayes:
     def accuracy_metric(self, y_true: pd.Series, y_pred: pd.Series) -> float:
         """Calculates the accuracy of the model.
 
-        Args:
-            y_true (pd.Series): True target.
-            y_pred (pd.Series): Predicted target.
+        Parameters
+        ----------
+        y_true : pd.Series
+            True target.
+        y_pred : pd.Series
+            Predicted target.
 
-        Returns:
-            float: Accuracy of the model.
+        Returns
+        -------
+        float
+            Accuracy of the model.
         """
         return (y_true == y_pred).sum()/len(y_true)
         
-    def cross_validation_evaluate(self, k: int, data: pd.DataFrame, method: None | str  = None) -> List[float]:
+    def cross_validation_evaluate(self, k: int, data: pd.DataFrame, method: None | str  = None) -> tuple[List[float], float]:
         """Evaluates the model using cross-validation.
 
-        Args:
-            k (int): Number of folds.
-            X (pd.DataFrame): Features.
-            y (pd.Series): Target.
-            method (None | str, optional): Method to predict the class. This can be None or 'log'. 
+        Parameters
+        ----------
+        k : int
+            Number of folds.
+        data : pd.DataFrame
+            Dataset.
+        method : None | str, optional
+            Method to predict the class. This can be None or 'log'. 
             Defaults to None.
 
-        Returns:
-            List[float]: List of accuracies.
+        Returns
+        -------
+        tuple[List[float], float]
+            Tuple with List of accuracies and mean accuracy.
         """
         folds = self._cross_validation_split(k=k, data=data)
         accuracies = []
