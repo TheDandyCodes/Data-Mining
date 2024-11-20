@@ -152,8 +152,7 @@ class NaiveBayes:
             Predicted class.
         """
         if method == 'log':
-            # Multiply by minus one to convert to positive the negative values of log-probabilities
-            probabilities = pd.DataFrame(self.predict_log_prob(X_test))*(-1)
+            probabilities = pd.DataFrame(self.predict_log_prob(X_test))
         else:
             probabilities = pd.DataFrame(self.predict_prob(X_test))
 
@@ -235,28 +234,31 @@ class NaiveBayes:
         return accuracies, mean_accuracy
 
 if __name__ == '__main__':
-    print("Loading data...")
-    from ucimlrepo import fetch_ucirepo
-    iris_dataset = fetch_ucirepo(id=53)
-    X_iris = iris_dataset.data.features
-    y_iris = iris_dataset.data.targets['class']
-    iris_df = pd.concat([X_iris, y_iris], axis=1)
+    # print("Loading data...")
+    # from ucimlrepo import fetch_ucirepo
+    # iris_dataset = fetch_ucirepo(id=53)
+    # X_iris = iris_dataset.data.features
+    # y_iris = iris_dataset.data.targets['class']
+    # iris_df = pd.concat([X_iris, y_iris], axis=1)
 
     test_df = pd.DataFrame(
         {
-            'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul'], 
-            'Tamaño': ['Grande', 'Pequeño', 'Pequeño', 'Grande'],
-            'Length': [5, 10, 15, 20],    
-            'class': ['A', 'B', 'A', 'B']
+            'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul', 'Verde'], 
+            'Tamaño': ['Grande', 'Pequeño', 'Pequeño', 'Grande', 'Grande'],
+            'Length': [5, 10, 15, 20, 30],    
+            'class': ['A', 'B', 'A', 'B', 'A']
         }
     )
 
     print("Fitting the models...")
     nb = NaiveBayes()
     nb.fit(X_train=test_df.iloc[:, :-1], y_train=test_df['class'])
-
-    print(nb.predict_prob(test_df.iloc[:, :-1]))
-    print(nb.predict_log_prob(test_df.iloc[:, :-1]))
+    print(test_df)
+    result = test_df.groupby('class')['Colores'].value_counts().unstack(fill_value=0).reindex(columns=test_df['Colores'].unique(), fill_value=0)
+    print(result)
+    alpha=1
+    laplace_smth_result = (result+alpha) / (result.sum(axis=1) + alpha*len(test_df['Colores'].unique()))
+    print(len(test_df['Colores'].unique()).values[:, None])
     # print("Evaluating the model with no log-probabilities...")
     # cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
 
