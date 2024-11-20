@@ -139,6 +139,8 @@ class NaiveBayes:
             likelihood = 0
             for feat in X_test.columns:
                 if X_test[feat].dtype == 'object':
+                    mapped_values = X_test[feat].map(nb.parameters[class_][feat])
+                    print(mapped_values[(mapped_values.isna()) | (mapped_values == 0)])
                     likelihood+=np.log(X_test[feat].map(nb.parameters[class_][feat]))
                 else:
                     likelihood+=np.log(self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std']))
@@ -260,7 +262,7 @@ if __name__ == '__main__':
     bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.drop(columns=['contact', 'poutcome'])
     X_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.iloc[:, :-1]
     y_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing['y']
-    
+
     # test_df = pd.DataFrame(
     #     {
     #         'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul', 'Verde'], 
