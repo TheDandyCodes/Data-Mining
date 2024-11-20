@@ -40,22 +40,33 @@ class NaiveBayes:
         function = 1/(std*np.sqrt(2*np.pi))*exponent
         return function
     
-    def _discret_likelihood(self, feature: pd.Series) -> pd.Series:
-        """Calculates the likelihood of each value for discret features.
+    def _discret_likelihood_with_laplace_smth(self, X_train: pd.DataFrame, y_train: pd.Series, column: str, alpha:int = 1) -> Dict[str, Dict[str, float]]:
+        """Calculates the likelihood of each value for discret features using Laplace smoothing.
 
         Parameters
         ----------
-        feature : pd.Series
-            Feature to calculate the likelihood.
+        X_train : pd.DataFrame
+            Training data.
+        y_train : pd.Series
+            Training target.
+        column : str
+            Column to calculate the likelihood.
+        alpha : int, optional
+            Smoothing parameter. Defaults to 1.
 
         Returns
         -------
         pd.Series
-            Likelihood of each value in the feature.
-        """
-        value_counts = feature.value_counts()
-        likelihood = feature.map(value_counts / len(feature))
-        return likelihood
+            Likelihood of each value for the feature.
+        """        
+        dataset = pd.concat([X_train, y_train], axis=1)
+        result = dataset.groupby(dataset.columns[-1])[column].value_counts().unstack(fill_value=0)
+        result = result.reindex(columns=dataset[column].unique(), fill_value=0)
+
+        # `.values[:, None]` converts Unidimensional array to bidimensional array. From (2,) to (2, 1)
+        laplace_smth_result = (result+alpha) / (result.sum(axis=1) + alpha*len(X_train[column].unique())).values[:, None]
+        laplace_smth_result_dict = laplace_smth_result.to_dict(orient='index')
+        return laplace_smth_result_dict
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series):
         """Calculates the mean and the standard deviation of the features per class.
@@ -80,9 +91,8 @@ class NaiveBayes:
                 parameters[class_][feature]['std'] = X_train[y_train == class_][feature].std()
 
             for feature in X_train.select_dtypes(include='object').columns:
-                parameters[class_][feature] = {}
-                subset = X_train[y_train == class_][feature]
-                parameters[class_][feature]['likelihood'] = subset.value_counts()/len(subset)
+                laplace_smth_result_dict = self._discret_likelihood_with_laplace_smth(X_train, y_train, feature)
+                parameters[class_][feature] = laplace_smth_result_dict[class_] 
             
         self.parameters = parameters
     
@@ -104,7 +114,7 @@ class NaiveBayes:
             likelihood = 1
             for feat in X_test.columns:
                 if X_test[feat].dtype == 'object':
-                    likelihood*=self._discret_likelihood(X_test[feat])
+                    likelihood*=X_test[feat].map(nb.parameters[class_][feat])
                 else:
                     likelihood*=self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std'])
             probabilities[class_] = likelihood*self.parameters[class_]['apriori']
@@ -129,7 +139,7 @@ class NaiveBayes:
             likelihood = 0
             for feat in X_test.columns:
                 if X_test[feat].dtype == 'object':
-                    likelihood+=np.log(self._discret_likelihood(X_test[feat]))
+                    likelihood+=np.log(X_test[feat].map(nb.parameters[class_][feat]))
                 else:
                     likelihood+=np.log(self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std']))
             log_probabilities[class_] = likelihood+np.log(self.parameters[class_]['apriori'])
@@ -221,9 +231,9 @@ class NaiveBayes:
         accuracies = []
         for fold in tqdm(folds, desc='Folds', total=k):
             X_train = fold['train'].iloc[:, :-1]
-            y_train = fold['train']['class']
+            y_train = fold['train'].iloc[:, -1]
             X_test = fold['test'].iloc[:, :-1]
-            y_test = fold['test']['class']
+            y_test = fold['test'].iloc[:, -1]
 
             self.fit(X_train=X_train, y_train=y_train)
             y_pred = self.predict(X_test=X_test, method=method)
@@ -234,36 +244,65 @@ class NaiveBayes:
         return accuracies, mean_accuracy
 
 if __name__ == '__main__':
-    # print("Loading data...")
-    # from ucimlrepo import fetch_ucirepo
-    # iris_dataset = fetch_ucirepo(id=53)
-    # X_iris = iris_dataset.data.features
-    # y_iris = iris_dataset.data.targets['class']
-    # iris_df = pd.concat([X_iris, y_iris], axis=1)
+    print("Loading datasets...\n\n")
+    from ucimlrepo import fetch_ucirepo
 
-    test_df = pd.DataFrame(
-        {
-            'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul', 'Verde'], 
-            'Tamaño': ['Grande', 'Pequeño', 'Pequeño', 'Grande', 'Grande'],
-            'Length': [5, 10, 15, 20, 30],    
-            'class': ['A', 'B', 'A', 'B', 'A']
-        }
-    )
+    iris_dataset = fetch_ucirepo(id=53)
+    X_iris = iris_dataset.data.features
+    y_iris = iris_dataset.data.targets['class']
+    iris_df = pd.concat([X_iris, y_iris], axis=1)
 
-    print("Fitting the models...")
-    nb = NaiveBayes()
-    nb.fit(X_train=test_df.iloc[:, :-1], y_train=test_df['class'])
-    print(test_df)
-    result = test_df.groupby('class')['Colores'].value_counts().unstack(fill_value=0).reindex(columns=test_df['Colores'].unique(), fill_value=0)
-    print(result)
-    alpha=1
-    laplace_smth_result = (result+alpha) / (result.sum(axis=1) + alpha*len(test_df['Colores'].unique()))
-    print(len(test_df['Colores'].unique()).values[:, None])
-    # print("Evaluating the model with no log-probabilities...")
-    # cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
-
-    # print("Evaluating the model with log-probabilities...")
-    # cv_ev_log = nb.cross_validation_evaluate(k=5, data=iris_df, method='log')
+    bank_marketing = fetch_ucirepo(id=222)
+    X_bank_marketing = bank_marketing.data.features
+    y_bank_marketing = bank_marketing.data.targets['y']
+    bank_marketing_df = pd.concat([X_bank_marketing, y_bank_marketing], axis=1)
+    bank_marketing_df_no_misssing = bank_marketing_df.dropna(subset=['job', 'education'])
+    bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.drop(columns=['contact', 'poutcome'])
+    X_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.iloc[:, :-1]
+    y_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing['y']
     
-    # print(cv_ev)
-    # print(cv_ev_log)
+    # test_df = pd.DataFrame(
+    #     {
+    #         'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul', 'Verde'], 
+    #         'Tamaño': ['Grande', 'Pequeño', 'Pequeño', 'Grande', 'Grande'],
+    #         'Length': [5, 10, 15, 20, 30],    
+    #         'class': ['A', 'B', 'A', 'B', 'A']
+    #     }
+    # )
+
+    # print("## IRIS DATASET ##\n")
+    # print("Fitting the models...\n")
+    # nb = NaiveBayes()
+
+    # print("Evaluating the model with NO log-probabilities...\n")
+    # cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
+    # for i, fold_acc in enumerate(cv_ev[0]):
+    #     print(f"Fold {i} - Accuracy: {fold_acc}")
+    # print(f"Mean Accuracy: {cv_ev[1]}\n\n")
+
+    # print("Evaluating the model with log-probabilities...\n")
+    # cv_ev_log = nb.cross_validation_evaluate(k=5, data=iris_df, method='log')
+    # for i, fold_acc in enumerate(cv_ev_log[0]):
+    #     print(f"Fold {i} - Accuracy: {fold_acc}")
+    # print(f"Mean Accuracy: {cv_ev_log[1]}\n\n")
+
+    print("## BANK MARKETING DATASET ##\n")
+    print("Fitting the models...\n")
+    nb = NaiveBayes()
+
+    # print("Evaluating the model with NO log-probabilities...\n")
+    # cv_ev = nb.cross_validation_evaluate(k=5, data=bank_marketing_df_no_misssing)
+    # for i, fold_acc in enumerate(cv_ev[0]):
+    #     print(f"Fold {i} - Accuracy: {fold_acc}")
+    # print(f"Mean Accuracy: {cv_ev[1]}\n\n")
+
+    print("Evaluating the model with log-probabilities...\n")
+    cv_ev_log = nb.cross_validation_evaluate(k=5, data=bank_marketing_df_no_misssing, method='log')
+    for i, fold_acc in enumerate(cv_ev_log[0]):
+        print(f"Fold {i} - Accuracy: {fold_acc}")
+    print(f"Mean Accuracy: {cv_ev_log[1]}\n\n")
+
+    # nb = NaiveBayes()
+    # nb.fit(X_train=X_bank_marketing_df_no_misssing, y_train=y_bank_marketing_df_no_misssing)
+    # print(nb.parameters)
+    
