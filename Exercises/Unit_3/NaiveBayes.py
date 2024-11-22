@@ -38,6 +38,9 @@ class NaiveBayes:
         """
         exponent = np.exp(-1/2*((feature - mean)/std)**2)
         function = 1/(std*np.sqrt(2*np.pi))*exponent
+        # Impose a lower bound on the probabilities to avoid extremeley small
+        # values that can lead to values of zero, therefore indefinite values
+        # when calculating the log.
         return np.maximum(function, 1e-10)
     
     def _discret_likelihood_with_laplace_smth(self, X_train: pd.DataFrame, y_train: pd.Series, column: str, alpha:int = 1) -> Dict[str, Dict[str, float]]:
@@ -141,14 +144,6 @@ class NaiveBayes:
                 if X_test[feat].dtype == 'object':
                     likelihood+=np.log(X_test[feat].map(nb.parameters[class_][feat]))
                 else:
-                    gauss_likelihood = self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std'])
-                    if (gauss_likelihood == 0).any():
-                        zero_likelihood_rows = X_test[feat][gauss_likelihood == 0].index
-                        print(f"Class: {class_}")
-                        print(f"Feature: {feat}")
-                        print("Mean: ", self.parameters[class_][feat]['mean'])
-                        print("Std: ", self.parameters[class_][feat]['std'])
-                        print(gauss_likelihood[gauss_likelihood == 0])
                     likelihood+=np.log(self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std']))
             log_probabilities[class_] = likelihood+np.log(self.parameters[class_]['apriori'])
         return log_probabilities
@@ -201,7 +196,7 @@ class NaiveBayes:
         return folds
     
     def accuracy_metric(self, y_true: pd.Series, y_pred: pd.Series) -> float:
-        """Calculates the accuracy of the model.
+        """Calculates the accuracy of a prediction.
 
         Parameters
         ----------
@@ -213,7 +208,7 @@ class NaiveBayes:
         Returns
         -------
         float
-            Accuracy of the model.
+            Accuracy of a prediction.
         """
         return (y_true == y_pred).sum()/len(y_true)
         
@@ -255,55 +250,45 @@ if __name__ == '__main__':
     print("Loading datasets...\n\n")
     from ucimlrepo import fetch_ucirepo
 
-    # iris_dataset = fetch_ucirepo(id=53)
-    # X_iris = iris_dataset.data.features
-    # y_iris = iris_dataset.data.targets['class']
-    # iris_df = pd.concat([X_iris, y_iris], axis=1)
-    iris_df = pd.read_parquet('iris_dataset.parquet')
+    iris_dataset = fetch_ucirepo(id=53)
+    X_iris = iris_dataset.data.features
+    y_iris = iris_dataset.data.targets['class']
+    iris_df = pd.concat([X_iris, y_iris], axis=1)
 
-    # bank_marketing = fetch_ucirepo(id=222)
-    # X_bank_marketing = bank_marketing.data.features
-    # y_bank_marketing = bank_marketing.data.targets['y']
-    # bank_marketing_df = pd.concat([X_bank_marketing, y_bank_marketing], axis=1)
-    bank_marketing_df = pd.read_parquet('bank_marketing_dataset.parquet')
+    bank_marketing = fetch_ucirepo(id=222)
+    X_bank_marketing = bank_marketing.data.features
+    y_bank_marketing = bank_marketing.data.targets['y']
+    bank_marketing_df = pd.concat([X_bank_marketing, y_bank_marketing], axis=1)
     bank_marketing_df_no_misssing = bank_marketing_df.dropna(subset=['job', 'education'])
     bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.drop(columns=['contact', 'poutcome'])
     X_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.iloc[:, :-1]
     y_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing['y']
-    # test_df = pd.DataFrame(
-    #     {
-    #         'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul', 'Verde'], 
-    #         'Tamaño': ['Grande', 'Pequeño', 'Pequeño', 'Grande', 'Grande'],
-    #         'Length': [5, 10, 15, 20, 30],    
-    #         'class': ['A', 'B', 'A', 'B', 'A']
-    #     }
-    # )
 
-    # print("## IRIS DATASET ##\n")
-    # print("Fitting the models...\n")
-    # nb = NaiveBayes()
+    print("## IRIS DATASET ##\n")
+    print("Fitting the models...\n")
+    nb = NaiveBayes()
 
-    # print("Evaluating the model with NO log-probabilities...\n")
-    # cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
-    # for i, fold_acc in enumerate(cv_ev[0]):
-    #     print(f"Fold {i} - Accuracy: {fold_acc}")
-    # print(f"Mean Accuracy: {cv_ev[1]}\n\n")
+    print("Evaluating the model with NO log-probabilities...\n")
+    cv_ev = nb.cross_validation_evaluate(k=5, data=iris_df)
+    for i, fold_acc in enumerate(cv_ev[0]):
+        print(f"Fold {i} - Accuracy: {fold_acc}")
+    print(f"Mean Accuracy: {cv_ev[1]}\n\n")
 
-    # print("Evaluating the model with log-probabilities...\n")
-    # cv_ev_log = nb.cross_validation_evaluate(k=5, data=iris_df, method='log')
-    # for i, fold_acc in enumerate(cv_ev_log[0]):
-    #     print(f"Fold {i} - Accuracy: {fold_acc}")
-    # print(f"Mean Accuracy: {cv_ev_log[1]}\n\n")
+    print("Evaluating the model with log-probabilities...\n")
+    cv_ev_log = nb.cross_validation_evaluate(k=5, data=iris_df, method='log')
+    for i, fold_acc in enumerate(cv_ev_log[0]):
+        print(f"Fold {i} - Accuracy: {fold_acc}")
+    print(f"Mean Accuracy: {cv_ev_log[1]}\n\n")
 
     print("## BANK MARKETING DATASET ##\n")
     print("Fitting the models...\n")
     nb = NaiveBayes()
 
-    # print("Evaluating the model with NO log-probabilities...\n")
-    # cv_ev = nb.cross_validation_evaluate(k=5, data=bank_marketing_df_no_misssing)
-    # for i, fold_acc in enumerate(cv_ev[0]):
-    #     print(f"Fold {i} - Accuracy: {fold_acc}")
-    # print(f"Mean Accuracy: {cv_ev[1]}\n\n")
+    print("Evaluating the model with NO log-probabilities...\n")
+    cv_ev = nb.cross_validation_evaluate(k=5, data=bank_marketing_df_no_misssing)
+    for i, fold_acc in enumerate(cv_ev[0]):
+        print(f"Fold {i} - Accuracy: {fold_acc}")
+    print(f"Mean Accuracy: {cv_ev[1]}\n\n")
 
     print("Evaluating the model with log-probabilities...\n")
     cv_ev_log = nb.cross_validation_evaluate(k=5, data=bank_marketing_df_no_misssing, method='log')
@@ -311,7 +296,60 @@ if __name__ == '__main__':
         print(f"Fold {i} - Accuracy: {fold_acc}")
     print(f"Mean Accuracy: {cv_ev_log[1]}\n\n")
 
-    # nb = NaiveBayes()
-    # nb.fit(X_train=X_bank_marketing_df_no_misssing, y_train=y_bank_marketing_df_no_misssing)
-    # print(nb.parameters)
-    
+    # ## Resultados de la evalaución del modelo con el dataset IRIS ##
+    # Evaluating the model with NO log-probabilities...
+
+    # Fold 0 - Accuracy: 1.0
+    # Fold 1 - Accuracy: 0.9666666666666667
+    # Fold 2 - Accuracy: 0.9666666666666667
+    # Fold 3 - Accuracy: 0.9333333333333333
+    # Fold 4 - Accuracy: 0.9666666666666667
+    # Mean Accuracy: 0.9666666666666668
+
+    # Estos resultados indican que el modelo tiene un buen desempeño en términos de Accuracy (Predicciones correctas / Total de predicciones)   
+    # en la clasificación de las flores del dataset Iris. (Setosa, Versicolor, Virginica).
+    # Esto quiere decir que el dataset contiene información suficiente para que el modelo pueda aprender y generalizar correctamente
+    # a partir del cálculo de las probabilidades condicionales de las features.
+
+
+    # Evaluating the model with log-probabilities...
+
+    # Fold 0 - Accuracy: 0.9666666666666667
+    # Fold 1 - Accuracy: 0.9666666666666667
+    # Fold 2 - Accuracy: 0.8333333333333334
+    # Fold 3 - Accuracy: 1.0
+    # Fold 4 - Accuracy: 1.0
+    # Mean Accuracy: 0.9533333333333334
+
+    # En este caso, se emplea el logaritmo de las probabilidades para evitar problemas de underflow,
+    # dado que las probabilidades son valores muy pequeños pudiendo ser cero en algunos casos.
+    # El desempeño es similar al modelo sin logaritmos
+
+
+    # ## Resultados de la evalaución del modelo con el dataset BANK MARKETING ##
+    # Evaluating the model with NO log-probabilities...
+
+    # Fold 0 - Accuracy: 0.8901493228382915
+    # Fold 1 - Accuracy: 0.8752170390091446
+    # Fold 2 - Accuracy: 0.8878342400740826
+    # Fold 3 - Accuracy: 0.8797175272053717
+    # Fold 4 - Accuracy: 0.878212549201204
+    # Mean Accuracy: 0.8822261356656188
+
+    # En este caso, el modelo tiene un desempeño aceptable en términos de Accuracy 
+    # en la clasificación de los clientes (Sí se suscribe a un depósito, No se suscribe a un depósito)
+    # Dado que el dataset contiene más complejidad en términos de la cantidad de features y la cantidad de datos,
+    # el modelo tiene un desempeño menos preciso que en el caso del dataset Iris.
+
+
+    # Evaluating the model with log-probabilities...
+
+    # Fold 0 - Accuracy: 0.8845931242041903
+    # Fold 1 - Accuracy: 0.8789211714318786
+    # Fold 2 - Accuracy: 0.8845931242041903
+    # Fold 3 - Accuracy: 0.8790229219726788
+    # Fold 4 - Accuracy: 0.8851586015281315
+    # Mean Accuracy: 0.8824577886682141
+
+    # En este caso, se emplea el logaritmo de las probabilidades para evitar problemas de underflow,
+    # El desempeño es similar al modelo sin logaritmos.
