@@ -38,7 +38,7 @@ class NaiveBayes:
         """
         exponent = np.exp(-1/2*((feature - mean)/std)**2)
         function = 1/(std*np.sqrt(2*np.pi))*exponent
-        return function
+        return np.maximum(function, 1e-10)
     
     def _discret_likelihood_with_laplace_smth(self, X_train: pd.DataFrame, y_train: pd.Series, column: str, alpha:int = 1) -> Dict[str, Dict[str, float]]:
         """Calculates the likelihood of each value for discret features using Laplace smoothing.
@@ -139,10 +139,16 @@ class NaiveBayes:
             likelihood = 0
             for feat in X_test.columns:
                 if X_test[feat].dtype == 'object':
-                    mapped_values = X_test[feat].map(nb.parameters[class_][feat])
-                    print(mapped_values[(mapped_values.isna()) | (mapped_values == 0)])
                     likelihood+=np.log(X_test[feat].map(nb.parameters[class_][feat]))
                 else:
+                    gauss_likelihood = self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std'])
+                    if (gauss_likelihood == 0).any():
+                        zero_likelihood_rows = X_test[feat][gauss_likelihood == 0].index
+                        print(f"Class: {class_}")
+                        print(f"Feature: {feat}")
+                        print("Mean: ", self.parameters[class_][feat]['mean'])
+                        print("Std: ", self.parameters[class_][feat]['std'])
+                        print(gauss_likelihood[gauss_likelihood == 0])
                     likelihood+=np.log(self._gauss_likelihood(X_test[feat], self.parameters[class_][feat]['mean'], self.parameters[class_][feat]['std']))
             log_probabilities[class_] = likelihood+np.log(self.parameters[class_]['apriori'])
         return log_probabilities
@@ -249,20 +255,21 @@ if __name__ == '__main__':
     print("Loading datasets...\n\n")
     from ucimlrepo import fetch_ucirepo
 
-    iris_dataset = fetch_ucirepo(id=53)
-    X_iris = iris_dataset.data.features
-    y_iris = iris_dataset.data.targets['class']
-    iris_df = pd.concat([X_iris, y_iris], axis=1)
+    # iris_dataset = fetch_ucirepo(id=53)
+    # X_iris = iris_dataset.data.features
+    # y_iris = iris_dataset.data.targets['class']
+    # iris_df = pd.concat([X_iris, y_iris], axis=1)
+    iris_df = pd.read_parquet('iris_dataset.parquet')
 
-    bank_marketing = fetch_ucirepo(id=222)
-    X_bank_marketing = bank_marketing.data.features
-    y_bank_marketing = bank_marketing.data.targets['y']
-    bank_marketing_df = pd.concat([X_bank_marketing, y_bank_marketing], axis=1)
+    # bank_marketing = fetch_ucirepo(id=222)
+    # X_bank_marketing = bank_marketing.data.features
+    # y_bank_marketing = bank_marketing.data.targets['y']
+    # bank_marketing_df = pd.concat([X_bank_marketing, y_bank_marketing], axis=1)
+    bank_marketing_df = pd.read_parquet('bank_marketing_dataset.parquet')
     bank_marketing_df_no_misssing = bank_marketing_df.dropna(subset=['job', 'education'])
     bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.drop(columns=['contact', 'poutcome'])
     X_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing.iloc[:, :-1]
     y_bank_marketing_df_no_misssing = bank_marketing_df_no_misssing['y']
-
     # test_df = pd.DataFrame(
     #     {
     #         'Colores' : ['Rojo', 'Verde', 'Rojo', 'Azul', 'Verde'], 
