@@ -1,3 +1,6 @@
+
+![banner](https://github.com/user-attachments/assets/68aa59b9-bed3-4cc2-95ca-cfbed7144f94)
+
 # Data-Mining
 Data Mining subject from MS, Artificial Intelligence Research
 
